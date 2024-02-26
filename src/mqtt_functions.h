@@ -13,16 +13,11 @@ struct mqtt_connection_settings {
     char *username;
     char *password;
     char ***actions_set;
-    char **recipiants;
+    char ***recipiants;
 };
 
-int mqtt_setup(struct mosquitto **mosq,
-               struct mqtt_connection_settings mqtt_conn_set, void *on_connect,
-               void *on_subscribe, void *on_message);
+int mqtt_setup(struct mosquitto **mosq, struct mqtt_connection_settings mqtt_conn_set, void *on_connect, void *on_subscribe, void *on_message);
 void on_connect(struct mosquitto *mosq, void *obj, int reason_code);
-void on_subscribe(struct mosquitto *mosq, void *obj, int mid, int qos_count,
-                  const int *granted_qos);
-void on_message(struct mosquitto *mosq, void *obj,
-                const struct mosquitto_message *msg);
-void mqtt_message_event_check(void *obj, char *msg_topic, char *temp,
-                              char *humidity);
+void on_subscribe(struct mosquitto *mosq, void *obj, int mid, int qos_count, const int *granted_qos);
+void on_message(struct mosquitto *mosq, void *obj, const struct mosquitto_message *msg);
+void mqtt_message_event_check(void *obj, char *msg_topic, char *temp, char *humidity);

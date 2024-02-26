@@ -16,31 +16,35 @@ static void pSigHandler(int signo) {
     end = 1;
 }
 
-void allocate_actions_set_array(struct mqtt_connection_settings *settings) {
+void allocate_topic_array(char ****member, int rows, int cols) {
     // Allocate memory for the array of pointers
-    settings->actions_set = calloc(1, ROWS * sizeof(char **));
-    for (int i = 0; i < ROWS; i++) {
+    *member = malloc(rows * sizeof(char **));
+    for (int i = 0; i < rows; i++) {
         // Allocate memory for each row (array of pointers)
-        settings->actions_set[i] = calloc(1, COLS * sizeof(char *));
-        for (int j = 0; j < COLS; j++) {
+        (*member)[i] = malloc((cols + 1) * sizeof(char *));   // Extra space for NULL terminator
+        for (int j = 0; j < cols; j++) {
             // Allocate memory for each pointer (topic string)
-            settings->actions_set[i][j] = calloc(1, 50 * sizeof(char));   // Assuming max topic length is 50
-            sprintf(settings->actions_set[i][j], "(empty)");
+            (*member)[i][j] = malloc(50 * sizeof(char));   // Assuming max topic length is 50
+            sprintf((*member)[i][j], "(empty)", i, j);     // Example initialization
         }
+        // Set the last pointer in each row to NULL
+        (*member)[i][cols] = NULL;
     }
 }
 
-void free_actions_set_array(struct mqtt_connection_settings *settings) {
+void free_topic_array(char ****member, int rows, int cols) {
     // Free memory for each pointer in the array
-    for (int i = 0; i < ROWS; i++) {
-        for (int j = 0; j < COLS; j++) {
-            free(settings->MQTT_TOPIC[i][j]);
+    for (int i = 0; i < rows; i++) {
+        for (int j = 0; (*member)[i][j] != NULL; j++) {
+            free((*member)[i][j]);
         }
         // Free memory for each row (array of pointers)
-        free(settings->MQTT_TOPIC[i]);
+        free((*member)[i]);
     }
     // Free memory for the array itself
-    free(settings->MQTT_TOPIC);
+    free(*member);
+    // Set the member pointer to NULL to indicate it's no longer valid
+    *member = NULL;
 }
 
 int main() {
@@ -57,7 +61,8 @@ int main() {
 
     mqtt_conn_set.MQTT_TOPIC = calloc(1, MQTT_TOPIC_SIZE * sizeof(char *));
     mqtt_conn_set.recipiants = calloc(1, ACTIONS_SIZE * sizeof(char *));
-    allocate_actions_set_array(&mqtt_conn_set);
+    allocate_topic_array(&mqtt_conn_set.actions_set, ROWS, COLS);
+    allocate_topic_array(&mqtt_conn_set.recipiants, ROWS, COLS);
 
     uci_mqtt_data(&mqtt_conn_set);
     uci_actions_data(&mqtt_conn_set);
@@ -85,7 +90,8 @@ int main() {
         free(mqtt_conn_set.MQTT_TOPIC[i]);
     }
     free(mqtt_conn_set.MQTT_TOPIC);
-    free_actions_set_array(&mqtt_conn_set);
+    free_topic_array(&mqtt_conn_set.actions_set, ROWS, COLS);
+    free_topic_array(&mqtt_conn_set.recipiants, ROWS, COLS);
     uci_unload_and_free_context();
     syslog(LOG_USER | LOG_INFO, "Stopping mqtt_sub\n");
     closelog();

@@ -101,8 +101,7 @@ int uci_actions_data(struct mqtt_connection_settings *mqtt_conn_set) {
         option = uci_lookup_option(ctx, sec, "recipiant");
         int j = 0;
         uci_foreach_element(&option->v.list, element) {   // FIND ALL RECIPIANTS
-            mqtt_conn_set->recipiants[j] = malloc(50 * sizeof(char));
-            sprintf(mqtt_conn_set->recipiants[j], "%s", element->name);
+            sprintf(mqtt_conn_set->recipiants[i][j], "%s", element->name);
             j++;
         }
 

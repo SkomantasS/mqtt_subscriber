@@ -247,7 +247,10 @@ void mqtt_message_event_check(void *obj, char *msg_topic, char *temp, char *humi
         }
         if (sendmail == 1) {
             curl_payload_text_set(msg_topic, parameter, sensor_data, email_username);
-            curl_send_email(email_username, email_smtps, email_secret, "kajus.dam@proton.me");
+            for (int j = 0; j < COLS; j++) {
+                if (strcmp(temporary_set->recipiants[i][j], "(empty)"))
+                    curl_send_email(email_username, email_smtps, email_secret, temporary_set->recipiants[i][j]);
+            }
             curl_free_payload_text();
         }
     }
