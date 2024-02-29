@@ -4,7 +4,10 @@ LDFLAGS:=-lmosquitto\
 -lubox\
 -lblobmsg_json\
 -luci\
--lcurl
+-lcurl\
+-largp\
+-lcrypto\
+
 
 CPPFLAGS:=-I$(CURDIR)
 SRC:=$(wildcard *.c)

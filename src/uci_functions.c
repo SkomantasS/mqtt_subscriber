@@ -1,14 +1,43 @@
 #include "mqtt_functions.h"
 #include <mosquitto.h>
+#include <openssl/evp.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include <uci.h>
 
 struct uci_context *ctx;
 struct uci_package *pkg;
 
+#define MAX_STRINGS 1000   // Maximum number of strings
+#define HASH_LENGTH 32     // SHA-256 hash length in bytes
+
+unsigned char *hash_strings(char **strings, int num_strings) {
+    EVP_MD_CTX *mdctx;
+    const EVP_MD *md;
+    unsigned char *hash = malloc(HASH_LENGTH);
+
+    OpenSSL_add_all_digests();
+    md = EVP_get_digestbyname("sha256");
+
+    if (!md) {
+        printf("Unknown message digest\n");
+        exit(1);
+    }
+
+    mdctx = EVP_MD_CTX_new();
+    EVP_DigestInit_ex(mdctx, md, NULL);
+
+    for (int i = 0; i < num_strings; i++) {
+        EVP_DigestUpdate(mdctx, strings[i], strlen(strings[i]));
+    }
+
+    EVP_DigestFinal_ex(mdctx, hash, NULL);
+    EVP_MD_CTX_free(mdctx);
+
+    return hash;
+}
 int uci_mqtt_data(struct mqtt_connection_settings *mqtt_conn_set) {
-    int ret = 0;
     ctx = uci_alloc_context();
     if (!ctx) {
         fprintf(stderr, "Error: Unable to allocate UCI context\n");
@@ -20,50 +49,50 @@ int uci_mqtt_data(struct mqtt_connection_settings *mqtt_conn_set) {
         uci_free_context(ctx);
         return -1;
     }
-    struct uci_section *sec = uci_lookup_section(ctx, pkg, "connection_set");
+    struct uci_section *sec = uci_lookup_section(ctx, pkg, "emai_sender_info");
     if (!sec) {
         fprintf(stderr, "Error: Failed to find section\n");
         uci_unload(ctx, pkg);
         uci_free_context(ctx);
         return -1;
     }
-    const char *mqtt_port = uci_lookup_option_string(ctx, sec, "mqtt_port");
-    const char *keepalive = uci_lookup_option_string(ctx, sec, "keepalive");
-    const char *clean_session = uci_lookup_option_string(ctx, sec, "clean_session");
-    const char *mqtt_broker = uci_lookup_option_string(ctx, sec, "mqtt_broker");
-    const char *username = uci_lookup_option_string(ctx, sec, "username");
-    const char *password = uci_lookup_option_string(ctx, sec, "password");
+    // const char *email_username = uci_lookup_option_string(ctx, sec, "email_username");
+    // const char *email_smtps = uci_lookup_option_string(ctx, sec, "email_smtps");
+    // const char *email_secret = uci_lookup_option_string(ctx, sec, "email_secret");
 
-    struct uci_element *element;
-    struct uci_option *option;
-    option = uci_lookup_option(ctx, sec, "mqtt_topic");
-    int i = 0;
-    uci_foreach_element(&option->v.list, element) {   // FIND ALL TOPICS
-        mqtt_conn_set->MQTT_TOPIC[i] = malloc(50 * sizeof(char));
-        sprintf(mqtt_conn_set->MQTT_TOPIC[i], "%s", element->name);
-        i++;
-    }
-
-    if (!mqtt_broker) {
-        fprintf(stderr, "Error: Failed to find mqtt_broker option\n");
-        uci_unload(ctx, pkg);
-        uci_free_context(ctx);
-        return -1;
-    }
-    printf("MQTT Broker IP: %s\n", mqtt_broker);
-
-    mqtt_conn_set->MQTT_PORT = atoi(mqtt_port);
-    mqtt_conn_set->keepalive = atoi(keepalive);
-    mqtt_conn_set->clean_session = atoi(clean_session);
-    mqtt_conn_set->MQTT_BROKER = mqtt_broker;
-    mqtt_conn_set->username = username;
-    mqtt_conn_set->password = password;
+    // if (!email_username || !email_smtps || !email_secret) {
+    //     fprintf(stderr, "Error: Failed to find email options\n");
+    //     uci_unload(ctx, pkg);
+    //     uci_free_context(ctx);
+    //     return -1;
+    // }
+    sprintf(mqtt_conn_set->email_settings->email_username, "%s", uci_lookup_option_string(ctx, sec, "email_username"));
+    sprintf(mqtt_conn_set->email_settings->email_smtps, "%s", uci_lookup_option_string(ctx, sec, "email_smtps"));
+    sprintf(mqtt_conn_set->email_settings->email_secret, "%s", uci_lookup_option_string(ctx, sec, "email_secret"));
+    // mqtt_conn_set->email_settings->email_username = uci_lookup_option_string(ctx, sec, "email_username");
+    // mqtt_conn_set->email_settings->email_smtps = uci_lookup_option_string(ctx, sec, "email_smtps");
+    // mqtt_conn_set->email_settings->email_secret = uci_lookup_option_string(ctx, sec, "email_secret");
 
     return 0;
 }
 
+struct uci_section *uci_unnamed_section_get(char *pkg_name, char *name) {
+    struct uci_ptr ptr = {
+        .package = pkg_name,
+        .section = name,
+        .flags = (name && *name == '@') ? UCI_LOOKUP_EXTENDED : 0,
+    };
+    if (!ctx) {
+        ctx = uci_alloc_context();
+        if (!ctx)
+            return NULL;
+    }
+    if (uci_lookup_ptr(ctx, &ptr, NULL, true))
+        return NULL;
+    return ptr.s;
+}
+
 int uci_actions_data(struct mqtt_connection_settings *mqtt_conn_set) {
-    int ret = 0;
     ctx = uci_alloc_context();
     if (!ctx) {
         fprintf(stderr, "Error: Unable to allocate UCI context\n");
@@ -76,25 +105,15 @@ int uci_actions_data(struct mqtt_connection_settings *mqtt_conn_set) {
         return -1;
     }
     for (int i = 0; i < ROWS; i++) {
-        char event_section_name[10];
-        sprintf(event_section_name, "event%d", i + 1);
-        printf("%s\n", event_section_name);
-        struct uci_section *sec = uci_lookup_section(ctx, pkg, event_section_name);
-        if (!sec) {
+        char event_section_name[20];
+        sprintf(event_section_name, "@mqtt_sub[%d]", i + 1);
+        struct uci_section *sec = uci_unnamed_section_get("mqtt_sub", event_section_name);
+        if (sec == NULL) {
             fprintf(stderr, "Error: Failed to find section, or out of events\n");
             uci_unload(ctx, pkg);
             uci_free_context(ctx);
             return -1;
         }
-        printf("CIKLAS:%i\n", i);
-        char *topic = uci_lookup_option_string(ctx, sec, "topic");
-        char *parameter = uci_lookup_option_string(ctx, sec, "parameter");
-        char *datatype = uci_lookup_option_string(ctx, sec, "datatype");
-        char *comp_type = uci_lookup_option_string(ctx, sec, "comp_type");
-        char *comp_value = uci_lookup_option_string(ctx, sec, "comp_value");
-        char *email_username = uci_lookup_option_string(ctx, sec, "email_username");
-        char *email_smtps = uci_lookup_option_string(ctx, sec, "email_smtps");
-        char *email_secret = uci_lookup_option_string(ctx, sec, "email_secret");
 
         struct uci_element *element;
         struct uci_option *option;
@@ -105,15 +124,15 @@ int uci_actions_data(struct mqtt_connection_settings *mqtt_conn_set) {
             j++;
         }
 
-        sprintf(mqtt_conn_set->actions_set[i][0], "%s", topic);
-        sprintf(mqtt_conn_set->actions_set[i][1], "%s", parameter);
-        sprintf(mqtt_conn_set->actions_set[i][2], "%s", datatype);
-        sprintf(mqtt_conn_set->actions_set[i][3], "%s", comp_type);
-        sprintf(mqtt_conn_set->actions_set[i][4], "%s", comp_value);
-        sprintf(mqtt_conn_set->actions_set[i][5], "%s", email_username);
-        sprintf(mqtt_conn_set->actions_set[i][6], "%s", email_smtps);
-        sprintf(mqtt_conn_set->actions_set[i][7], "%s", email_secret);
-        // sprintf(mqtt_conn_set->actions_set[0][8], "%s", email_secret);
+        sprintf(mqtt_conn_set->actions_set[i][0], "%s", uci_lookup_option_string(ctx, sec, "topic"));
+        sprintf(mqtt_conn_set->actions_set[i][1], "%s", uci_lookup_option_string(ctx, sec, "parameter"));
+        sprintf(mqtt_conn_set->actions_set[i][2], "%s", uci_lookup_option_string(ctx, sec, "datatype"));
+        sprintf(mqtt_conn_set->actions_set[i][3], "%s", uci_lookup_option_string(ctx, sec, "comp_type"));
+        sprintf(mqtt_conn_set->actions_set[i][4], "%s", uci_lookup_option_string(ctx, sec, "comp_value"));
+
+        int num_strings = 6;
+        unsigned char *hash = hash_strings(mqtt_conn_set->actions_set[i], num_strings);
+        sprintf(mqtt_conn_set->actions_set[i][5], "%s", hash);
     }
     return 0;
 }

@@ -1,46 +1,10 @@
-/***************************************************************************
- *                                  _   _ ____  _
- *  Project                     ___| | | |  _ \| |
- *                             / __| | | | |_) | |
- *                            | (__| |_| |  _ <| |___
- *                             \___|\___/|_| \_\_____|
- *
- * Copyright (C) Daniel Stenberg, <daniel@haxx.se>, et al.
- *
- * This software is licensed as described in the file COPYING, which
- * you should have received as part of this distribution. The terms
- * are also available at https://curl.se/docs/copyright.html.
- *
- * You may opt to use, copy, modify, merge, publish, distribute and/or sell
- * copies of the Software, and permit persons to whom the Software is
- * furnished to do so, under the terms of the COPYING file.
- *
- * This software is distributed on an "AS IS" basis, WITHOUT WARRANTY OF ANY
- * KIND, either express or implied.
- *
- * SPDX-License-Identifier: curl
- *
- ***************************************************************************/
-
-/* <DESC>
- * Send SMTP email using implicit SSL
- * </DESC>
- */
-
 #include <curl/curl.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-/* This is a simple example showing how to send mail using libcurl's SMTP
- * capabilities. It builds on the smtp-mail.c example to add authentication
- * and, more importantly, transport security to protect the authentication
- * details from being snooped.
- *
- * Note that this example requires libcurl 7.20.0 or above.
- */
 
 #define FROM_MAIL "<pimatic.esp32.communication@gmail.com>"   // change impleme
-// #define TO_MAIL   "<pimatic.esp32.communication@gmail.com>"
+#define TO_MAIL   "<pimatic.esp32.communication@gmail.com>"
 
 char *payload_text = NULL;
 
@@ -48,35 +12,33 @@ struct upload_status {
     size_t bytes_read;
 };
 
-void curl_payload_text_set(char *Topic, char *Parameter, char *Value,
-                           char *to_mail) {
+void curl_payload_text_set(char *Topic, char *Parameter, char *Value, char *to_mail, char *from_mail) {
     char *data = NULL;
     size_t required_size = snprintf(NULL, 0,
                                     "To: %s\r\n"
-                                    "From: " FROM_MAIL "\r\n"
+                                    "From: %s\r\n"
                                     "Subject: Event report\r\n"
                                     "\r\n"
                                     "Topic: %s\r\n"
                                     "Parameter: %s\r\n"
                                     "Value: %s",
-                                    to_mail, Topic, Parameter, Value) +
+                                    to_mail, from_mail, Topic, Parameter, Value) +
                            1;
     data = calloc(1, required_size);
     sprintf(data,
             "To: %s\r\n"
-            "From: " FROM_MAIL "\r\n"
+            "From: %s\r\n"
             "Subject: Event report\r\n"
             "\r\n"
             "Topic: %s\r\n"
             "Parameter: %s\r\n"
             "Value: %s",
-            to_mail, Topic, Parameter, Value);
+            to_mail, from_mail, Topic, Parameter, Value);
     payload_text = data;
     return;
 }
 
-static size_t payload_source(char *ptr, size_t size, size_t nmemb,
-                             void *userp) {
+static size_t payload_source(char *ptr, size_t size, size_t nmemb, void *userp) {
     struct upload_status *upload_ctx = (struct upload_status *) userp;
     const char *data;
     size_t room = size * nmemb;
@@ -100,13 +62,11 @@ static size_t payload_source(char *ptr, size_t size, size_t nmemb,
     return 0;
 }
 
-int curl_send_email(char *email_username, char *email_smtps, char *email_secret,
-                    char *to_mail) {
+int curl_send_email(char *email_username, char *email_smtps, char *email_secret, char *to_mail) {
     CURL *curl;
     CURLcode res = CURLE_OK;
     struct curl_slist *recipients = NULL;
     struct upload_status upload_ctx = {0};
-
     curl = curl_easy_init();
     if (curl) {
         /* Set username and password */
@@ -170,8 +130,7 @@ int curl_send_email(char *email_username, char *email_smtps, char *email_secret,
 
         /* Check for errors */
         if (res != CURLE_OK)
-            fprintf(stderr, "curl_easy_perform() failed: %s\n",
-                    curl_easy_strerror(res));
+            fprintf(stderr, "curl_easy_perform() failed: %s\n", curl_easy_strerror(res));
 
         /* Free the list of recipients */
         curl_slist_free_all(recipients);
@@ -182,4 +141,5 @@ int curl_send_email(char *email_username, char *email_smtps, char *email_secret,
 
     return (int) res;
 }
+
 void curl_free_payload_text() { free(payload_text); }
